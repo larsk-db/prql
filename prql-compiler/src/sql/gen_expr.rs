@@ -804,7 +804,11 @@ pub(super) fn translate_ident_part(ident: String, ctx: &Context) -> sql_ast::Ide
         static ref VALID_BARE_IDENT: Regex = Regex::new(r"^((\*)|(^[a-z_\$][a-z0-9_\$]*))$").unwrap();
     }
 
-    let is_bare = VALID_BARE_IDENT.is_match(&ident);
+    let is_bare = ctx
+        .dialect
+        .alternative_valid_bare_ident_regex()
+        .unwrap_or(&VALID_BARE_IDENT)
+        .is_match(&ident);
 
     if is_bare && !is_keyword(&ident) {
         sql_ast::Ident::new(ident)

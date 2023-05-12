@@ -30,6 +30,7 @@ pub enum Token {
     And,         // &&
     Or,          // ||
     Coalesce,    // ??
+    Extract,     // ##
 }
 
 pub fn lexer() -> impl Parser<char, Vec<(Token, std::ops::Range<usize>)>, Error = Cheap<char>> {
@@ -47,6 +48,7 @@ pub fn lexer() -> impl Parser<char, Vec<(Token, std::ops::Range<usize>)>, Error 
         just("&&").then_ignore(end_expr()).to(Token::And),
         just("||").then_ignore(end_expr()).to(Token::Or),
         just("??").to(Token::Coalesce),
+        just("##").to(Token::Extract),
     ));
 
     let control = one_of("></%=+-*[]().,:|!").map(Token::Control);
@@ -131,7 +133,20 @@ pub fn ident_part() -> impl Parser<char, String, Error = Cheap<char>> {
         .then_ignore(just('`'))
         .collect::<String>();
 
-    plain.or(backticks)
+    let triple_backticks = {
+        let inner = just("```").not().repeated();
+
+        choice((
+            inner.delimited_by(just("````"), just("````")),
+            inner.delimited_by(just("```"), just("````")),
+            inner.delimited_by(just("````"), just("```")),
+            inner.delimited_by(just("```"), just("```")),
+        ))
+        .collect::<String>()
+        .map(|s| s.replace("`", ""))
+    };
+
+    triple_backticks.or(backticks).or(plain)
 }
 
 fn literal() -> impl Parser<char, Literal, Error = Cheap<char>> {
@@ -401,6 +416,7 @@ impl std::fmt::Display for Token {
             Self::And => f.write_str("&&"),
             Self::Or => f.write_str("||"),
             Self::Coalesce => f.write_str("??"),
+            Self::Extract => f.write_str("##"),
 
             Self::Param(id) => write!(f, "${id}"),
 

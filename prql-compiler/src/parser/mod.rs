@@ -2324,4 +2324,20 @@ join s=salaries [==id]
         )
         "###);
     }
+
+    #[test]
+    fn test_delta_path() {
+        let source = "from ```delta.`/path me/dir````";
+        assert_yaml_snapshot!(parse(source).unwrap(), @r###"
+        ---
+        - Main:
+            FuncCall:
+              name:
+                Ident:
+                  - from
+              args:
+                - Ident:
+                    - delta./path me/dir
+        "###);
+    }
 }

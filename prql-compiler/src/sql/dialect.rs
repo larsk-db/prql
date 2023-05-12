@@ -13,7 +13,7 @@
 //! constructs. The upside is much less complex translator.
 
 use core::fmt::Debug;
-
+use regex::Regex;
 use serde::{Deserialize, Serialize};
 use sqlparser::ast::{self as sql_ast, Function, FunctionArg, FunctionArgExpr, ObjectName};
 use std::any::{Any, TypeId};
@@ -47,6 +47,7 @@ pub enum Dialect {
     Ansi,
     BigQuery,
     ClickHouse,
+    Databricks,
     DuckDb,
     Generic,
     Hive,
@@ -73,6 +74,7 @@ impl Dialect {
             Dialect::DuckDb => Box::new(DuckDbDialect),
             Dialect::Postgres => Box::new(PostgresDialect),
             Dialect::Ansi | Dialect::Generic | Dialect::Hive => Box::new(GenericDialect),
+            Dialect::Databricks => Box::new(DatabricksDialect),
         }
     }
 
@@ -123,6 +125,10 @@ pub(super) trait DialectHandler: Any + Debug {
 
     fn big_query_quoting(&self) -> bool {
         false
+    }
+
+    fn alternative_valid_bare_ident_regex(&self) -> Option<&'static Regex> {
+        None
     }
 
     fn column_exclude(&self) -> Option<ColumnExclude> {
@@ -342,6 +348,39 @@ impl DialectHandler for DuckDbDialect {
         Some("REGEXP_MATCHES")
     }
 }
+
+mod databricks_dialect {
+    use super::*;
+    use lazy_static::lazy_static;
+
+    #[derive(Debug)]
+    pub struct DatabricksDialect;
+
+    lazy_static! {
+        // One of:
+        // - `*`
+        // - An ident starting with `a-z_\$` and containing other characters `a-zA-Z0-9_.\$`
+        static ref VALID_BARE_IDENT: Regex = Regex::new(r"^((\*)|(^[a-z_\$][a-zA-Z0-9_\$]*))$").unwrap();
+    }
+
+    impl DialectHandler for DatabricksDialect {
+        fn column_exclude(&self) -> Option<ColumnExclude> {
+            // https://docs.databricks.com/sql/language-manual/sql-ref-syntax-qry-select.html
+            Some(ColumnExclude::Exclude)
+        }
+
+        fn ident_quote(&self) -> char {
+            // https://docs.databricks.com/sql/language-manual/sql-ref-identifiers.html
+            '`'
+        }
+
+        fn alternative_valid_bare_ident_regex(&self) -> Option<&'static Regex> {
+            Some(&VALID_BARE_IDENT)
+        }
+    }
+}
+
+pub use databricks_dialect::DatabricksDialect;
 
 #[cfg(test)]
 mod tests {
